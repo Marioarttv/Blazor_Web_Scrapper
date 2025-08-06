@@ -1,0 +1,1965 @@
+﻿@page "/"
+@using System.ComponentModel.DataAnnotations
+@using System.Net
+@using System.Net.Http
+@using HtmlAgilityPack
+@using PuppeteerSharp
+@using System.Threading
+@using System.Text.RegularExpressions
+@inject IJSRuntime JSRuntime
+
+<div class="lsf-container">
+    <div class="lsf-card">
+        <div class="lsf-card-header">
+            <h3>LSF Data Gathering Tool</h3>
+        </div>
+        <div class="lsf-card-body">
+            <EditForm Model="@formModel" OnValidSubmit="@HandleValidSubmit">
+                <DataAnnotationsValidator />
+                <div class="@(validationErrors ? "validation-summary" : "d-none")">
+                    Please fix the errors below before continuing.
+                    <ValidationSummary />
+                </div>
+
+                <div class="lsf-form-group">
+                    <label for="lsfUrl" class="lsf-form-label">LSF URL</label>
+                    <InputText id="lsfUrl" @bind-Value="formModel.LsfUrl" class="lsf-form-control" placeholder="https://lsf.university.de" />
+                    <ValidationMessage For="@(() => formModel.LsfUrl)" />
+                </div>
+
+                <div class="lsf-field-row">
+                    <div class="lsf-field-column">
+                        <label for="username" class="lsf-form-label">Username</label>
+                        <InputText id="username" @bind-Value="formModel.Username" class="lsf-form-control" />
+                        <ValidationMessage For="@(() => formModel.Username)" />
+                    </div>
+                    <div class="lsf-field-column">
+                        <label for="password" class="lsf-form-label">Password</label>
+                        <InputText id="password" @bind-Value="formModel.Password" class="lsf-form-control" type="password" />
+                        <ValidationMessage For="@(() => formModel.Password)" />
+                    </div>
+                </div>
+
+                <div class="lsf-form-group">
+                    <label for="semesterCode" class="lsf-form-label">Semesterkürzel</label>
+                    <InputText id="semesterCode" @bind-Value="formModel.SemesterCode" class="lsf-form-control" placeholder="WiSe24/25" />
+                    <ValidationMessage For="@(() => formModel.SemesterCode)" />
+                    <div class="lsf-form-text">Example: WiSe24/25 for Winter Semester 2024/25, SoSe25 for Summer Semester 2025</div>
+                </div>
+
+                <div class="lsf-form-group">
+                    <label class="lsf-form-label">Course Types</label>
+                    <div class="lsf-check-container">
+
+                        <div class="lsf-check-inline @(formModel.IncludeVorlesung ? "active" : "")">
+                            <InputCheckbox id="checkVorlesung" @bind-Value="formModel.IncludeVorlesung" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkVorlesung">Vorlesung (1)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludeSeminar ? "active" : "")">
+                            <InputCheckbox id="checkSeminar" @bind-Value="formModel.IncludeSeminar" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkSeminar">Seminar (2)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludeHauptProseminar ? "active" : "")">
+                            <InputCheckbox id="checkHauptProseminar" @bind-Value="formModel.IncludeHauptProseminar" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkHauptProseminar">Haupt/Proseminar (3)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludeUebung ? "active" : "")">
+                            <InputCheckbox id="checkUebung" @bind-Value="formModel.IncludeUebung" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkUebung">Übung (4)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludePraktikum ? "active" : "")">
+                            <InputCheckbox id="checkPraktikum" @bind-Value="formModel.IncludePraktikum" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkPraktikum">Praktikum (5)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludeHauptseminar ? "active" : "")">
+                            <InputCheckbox id="checkHauptseminar" @bind-Value="formModel.IncludeHauptseminar" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkHauptseminar">Hauptseminar (8)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludeKolloquium ? "active" : "")">
+                            <InputCheckbox id="checkKolloquium" @bind-Value="formModel.IncludeKolloquium" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkKolloquium">Kolloquium (9)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludeTutorium ? "active" : "")">
+                            <InputCheckbox id="checkTutorium" @bind-Value="formModel.IncludeTutorium" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkTutorium">Tutorium (10)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludeRingvorlesung ? "active" : "")">
+                            <InputCheckbox id="checkRingvorlesung" @bind-Value="formModel.IncludeRingvorlesung" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkRingvorlesung">Ringvorlesung (11)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludeExkursion ? "active" : "")">
+                            <InputCheckbox id="checkExkursion" @bind-Value="formModel.IncludeExkursion" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkExkursion">Exkursion (12)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludeSonstige ? "active" : "")">
+                            <InputCheckbox id="checkSonstige" @bind-Value="formModel.IncludeSonstige" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkSonstige">Sonstige (14)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludePraesenzphase ? "active" : "")">
+                            <InputCheckbox id="checkPraesenzphase" @bind-Value="formModel.IncludePraesenzphase" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkPraesenzphase">Präsenzphase (15)</label>
+                        </div>
+                        <div class="lsf-check-inline @(formModel.IncludeKompakt ? "active" : "")">
+                            <InputCheckbox id="checkKompakt" @bind-Value="formModel.IncludeKompakt" class="lsf-check-input" @onclick="StateHasChanged" />
+                            <label class="lsf-check-label" for="checkKompakt">Kompakt (16)</label>
+                        </div>
+
+                    </div>
+                </div>
+
+                <button type="submit" class="lsf-btn lsf-btn-primary" disabled="@isProcessing">
+                    @if (isProcessing)
+                    {
+                        <span>Processing...</span>
+                    }
+                    else
+                    {
+                        <span>Start Data Gathering</span>
+                    }
+                </button>
+            </EditForm>
+
+            @if (isProcessing)
+            {
+                <div class="lsf-progress-container">
+                    <div class="lsf-progress">
+                        <div class="lsf-progress-bar" style="width: @($"{progressPercentage}%")"></div>
+                    </div>
+                    <div class="lsf-progress-text">@progressMessage</div>
+                </div>
+            }
+
+            @if (statusMessages.Count > 0)
+            {
+                <div class="lsf-status-messages">
+                    <h4>Status Log</h4>
+                    <div class="lsf-status-log">
+                        @foreach (var message in statusMessages)
+                        {
+                            <div class="lsf-status-item">@message</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (collectedData.Count > 0)
+            {
+            <div class="lsf-collected-data">
+                <h4>Collected Courses</h4>
+                <div class="lsf-data-actions">
+                    <div class="lsf-export-options">
+                        <div class="lsf-export-field">
+                            <label for="exportFileName" class="lsf-form-label">Export Name</label>
+                            <input type="text" id="exportFileName" @bind="exportFileName" class="lsf-form-control" placeholder="e.g. Informatik" />
+                            <div class="lsf-form-text">Custom name for export files</div>
+                        </div>
+                        <div class="lsf-export-field">
+                            <label for="minStudentCount" class="lsf-form-label">Min Students</label>
+                            <input type="number" id="minStudentCount" @bind="minStudentCount" class="lsf-form-control" min="0" placeholder="Optional" />
+                            <div class="lsf-form-text">Exclude courses with fewer students</div>
+                        </div>
+                        <div class="lsf-export-actions">
+                            <button class="lsf-btn lsf-btn-secondary" @onclick="ExportSelectedData">Export Selected</button>
+                            <button class="lsf-btn lsf-btn-secondary" @onclick="ToggleAllSelection">@(areAllSelected ? "Unselect All" : "Select All")</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="lsf-data-grid">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Select</th>
+                                <th>Course Name</th>
+                                <th>Course Code</th>
+                                <th>Professor</th>
+                                <th>Course Type</th>
+                                <th>Program</th>
+                                <th>Rhythmus</th>
+                                <th>Students</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in collectedData)
+                            {
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" checked="@item.IsSelected" @onchange="@(e => item.IsSelected = (bool)e.Value)" />
+                                    </td>
+                                    <td>@item.CourseName</td>
+                                    <td>@item.CourseCode</td>
+                                    <td>@($"{item.Title} {item.FirstName} {item.Surname}")</td>
+                                    <td>@GetCourseTypeText(item.CourseType)</td>
+                                    <td>@item.ProgramOfStudies</td>
+                                    <td>@item.Rhythmus</td>
+                                    <td>@GetStudentCountForCourse(item.CourseCode)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            }
+        </div>
+    </div>
+</div>
+
+
+@code {
+    private FormModel formModel = new();
+    private bool validationErrors = false;
+    private bool isProcessing = false;
+    private int progressPercentage = 0;
+    private string progressMessage = "";
+    private List<string> statusMessages = new List<string>();
+    private List<SelectableDataEntry> collectedData = new List<SelectableDataEntry>();
+    private List<BelegInformationen> studentsinFakultät = new List<BelegInformationen>();
+    private List<string> veranstaltungslinks = new List<string>();
+    private CancellationTokenSource cts = new CancellationTokenSource();
+    private bool areAllSelected = true;
+    private int? minStudentCount = null;
+    private string exportFileName = "";
+
+    protected override void OnInitialized()
+    {
+        // Prefill form fields with the provided values
+        formModel.LsfUrl = "";
+        formModel.Username = "";
+        formModel.Password = "";
+        formModel.SemesterCode = "SoSe25"; 
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        try
+        {
+            validationErrors = false;
+            isProcessing = true;
+            progressPercentage = 0;
+            progressMessage = "Initializing...";
+            statusMessages.Clear();
+            collectedData.Clear();
+            studentsinFakultät.Clear();
+            veranstaltungslinks.Clear();
+
+            cts = new CancellationTokenSource();
+            await InvokeAsync(StateHasChanged);
+
+            // Start the scraping process
+            await StartDataGathering();
+        }
+        catch (Exception ex)
+        {
+            AddStatusMessage($"Error: {ex.Message}");
+            Console.WriteLine($"Exception: {ex}");
+        }
+        finally
+        {
+            isProcessing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task StartDataGathering()
+    {
+        try
+        {
+            AddStatusMessage("Starting data gathering process...");
+
+            // Create HTTP client
+            HttpClient httpClient = new HttpClient();
+
+            // Use the full LSF URL for fakultät processing
+            string fakultäturl = formModel.LsfUrl;
+            AddStatusMessage($"Faculty URL: {fakultäturl}");
+
+            // Get fakultät HTML
+            UpdateProgress(10, "Fetching faculty HTML...");
+            string fakultäthtml = await GetHtmlAsync(httpClient, fakultäturl);
+            AddStatusMessage("Faculty HTML fetched successfully");
+
+            // Extract fakultät links
+            UpdateProgress(20, "Extracting faculty links...");
+            List<string> fakultätlinks = GetFakultätlinks(fakultäthtml, fakultäturl);
+            AddStatusMessage($"Found {fakultätlinks.Count} faculty links");
+
+            // Extract course links
+            UpdateProgress(30, "Extracting course links...");
+            veranstaltungslinks = GetVeranstaltungsLinks(fakultätlinks);
+            AddStatusMessage($"Found {veranstaltungslinks.Count} course links");
+
+            // Initialize result collections
+            List<string> excelformat = new List<string>();
+            excelformat.Add("usertype;title;professional_title;firstname;surname;email;course_name;course_code;program_of_studies;course_type");
+
+            // Login for student data gathering
+            UpdateProgress(40, "Setting up browser for login...");
+
+            // Use the exact login parameters from the console application
+            var loginUrl = "https://lsf.ph-ludwigsburg.de/qisserverlb/rds?state=user&type=0&application=lsf";
+            var username = formModel.Username;
+            var password = formModel.Password;
+            var usernameFieldName = "#asdf";
+            var passwordFieldName = "#fdsa";
+            var submitButton = "#loginForm\\:login";
+
+            // Initialize browser variables outside the try block so they can be accessed in the course processing loop
+            IPage page = null;
+            IBrowser browser = null;
+
+            try
+            {
+                // Download Chromium browser
+                AddStatusMessage("Downloading Chromium browser if needed...");
+                var browserFetcher = new BrowserFetcher();
+                await browserFetcher.DownloadAsync();
+
+                // Launch browser - using the newer pattern with await using
+                UpdateProgress(50, "Launching browser...");
+                browser = await Puppeteer.LaunchAsync(new LaunchOptions { Headless = true });
+                page = await browser.NewPageAsync();
+
+                // Navigate to login page
+                UpdateProgress(60, "Navigating to login page...");
+                await page.GoToAsync(loginUrl);
+                AddStatusMessage("Login page loaded");
+
+                // Enter credentials
+                UpdateProgress(65, "Entering credentials...");
+                await page.TypeAsync(usernameFieldName, username);
+                await page.TypeAsync(passwordFieldName, password);
+
+                // Submit login
+                UpdateProgress(70, "Submitting login...");
+                await page.ClickAsync(submitButton);
+                await page.WaitForNavigationAsync(); // Wait for navigation to complete
+                AddStatusMessage("Login submitted");
+
+                // Check for successful login
+                try
+                {
+                    AddStatusMessage("Checking login status...");
+                    var userIdentifier = username;
+                    var pageContent = await page.EvaluateFunctionAsync<string>("() => document.documentElement.outerHTML");
+                    var loggedIn = pageContent.Contains(userIdentifier);
+
+                    // Also check for logout button
+                    var logoutLink = await page.QuerySelectorAsync("a[href*='auth.logout']");
+                    if (logoutLink != null && !loggedIn)
+                    {
+                        loggedIn = true;
+                    }
+
+                    if (loggedIn)
+                    {
+                        AddStatusMessage("Successfully logged in with Fachbereich role");
+                        UpdateProgress(75, "Login complete");
+                    }
+                    else
+                    {
+                        AddStatusMessage("Login failed or user not found on page");
+                        return; // Exit if login fails
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AddStatusMessage($"Error checking login: {ex.Message}");
+                    return; // Exit if login check fails
+                }
+
+                // Process veranstaltungslinks and gather data
+                UpdateProgress(80, "Processing course links...");
+
+                // Initialize list to store final processed data
+                List<DataEntry> finalProduct = new List<DataEntry>();
+
+                // Process each course link
+                int processedLinks = 0;
+                int totalLinks = veranstaltungslinks.Count;
+
+                foreach (var link in veranstaltungslinks)
+                {
+                    processedLinks++;
+                    UpdateProgress(80 + (processedLinks * 15 / totalLinks), $"Processing course {processedLinks} of {totalLinks}");
+
+                    try
+                    {
+                        // Process student data (Belegungsinformation)
+                        await ProcessStudentData(page, browser, link);
+
+                        // Extract course data
+                        string html = await GetHtmlAsync(httpClient, link);
+                        List<DataEntry> entries = ExtractData(html);
+
+                        if (entries != null && entries.Count > 0)
+                        {
+                            int groups = 0;
+
+                            foreach (var entry in entries)
+                            {
+                                groups++;
+
+                                // Process additional group data if needed
+                                if (entries.Count > 1 && groups > 1)
+                                {
+                                    await ProcessGroupStudentData(page, browser, link, groups);
+                                    await Task.Delay(1000); // Add delay between group processing to avoid rate limiting
+                                }
+
+                                // Process professor data
+                                if (entry.ProfLink != "Not found")
+                                {
+                                    // Add delay to avoid rate limiting when accessing professor profiles
+                                    await Task.Delay(2000);
+                                    
+                                    string personHtml = await GetHtmlAsync(httpClient, entry.ProfLink);
+                                    DataEntry finalEntry = ExtractUserData(personHtml, entry);
+                                    finalProduct.Add(finalEntry);
+                                    AddStatusMessage($"Processed course: {finalEntry.CourseName}");
+                                }
+                                else
+                                {
+                                    finalProduct.Add(entry);
+                                    AddStatusMessage($"Processed course: {entry.CourseName} (No professor data)");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AddStatusMessage($"Error processing link {link}: {ex.Message}");
+                        // Add delay before processing next link to prevent cascading errors
+                        await Task.Delay(2000);
+                    }
+                }
+
+                // Convert DataEntry objects to SelectableDataEntry objects
+                foreach (var entry in finalProduct)
+                {
+                    collectedData.Add(new SelectableDataEntry(entry));
+                }
+
+                UpdateProgress(100, "Data gathering completed");
+                AddStatusMessage($"Successfully gathered data for {collectedData.Count} courses with {studentsinFakultät.Count} students");
+            }
+            catch (Exception ex)
+            {
+                AddStatusMessage($"Error during browser automation: {ex.Message}");
+            }
+            finally
+            {
+                // Clean up browser resources
+                if (page != null)
+                {
+                    await page.CloseAsync();
+                }
+
+                if (browser != null)
+                {
+                    await browser.CloseAsync();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AddStatusMessage($"Error during data gathering: {ex.Message}");
+            throw;
+        }
+    }
+
+    private async Task ProcessStudentData(IPage page, IBrowser browser, string link)
+    {
+        try
+        {
+            // Initialize formattedCourseCode at the beginning of the method
+            string formattedCourseCode = "Unknown";
+
+            // Navigate to the link and wait for the network to become idle
+            await page.GoToAsync(link, new PuppeteerSharp.NavigationOptions { WaitUntil = new[] { WaitUntilNavigation.Networkidle0 } });
+            await Task.Delay(2000); // Increased wait time to ensure page fully loads
+
+            // Check if the div containing the Belegungsinformation link exists
+            var divContainer = await page.QuerySelectorAsync("div.webTerm_activities");
+
+            if (divContainer != null)
+            {
+                // Check if the text "Keine Belegung" is present inside the container
+                var divTextContent = await page.EvaluateFunctionAsync<string>("element => element.textContent", divContainer);
+
+                if (!divTextContent.Contains("Keine Belegung"))
+                {
+                    // Check if this is a regular course (wöchentlich)
+                    var tableRows = await page.QuerySelectorAllAsync("table[summary='Übersicht über alle Veranstaltungstermine'] tbody tr");
+                    bool isRegularCourse = false;
+
+                    foreach (var row in tableRows)
+                    {
+                        var rhythmusColumnData = await row.QuerySelectorAsync("td:nth-child(4)");
+                        if (rhythmusColumnData != null)
+                        {
+                            var rhythmusText = await page.EvaluateFunctionAsync<string>("element => element.textContent", rhythmusColumnData);
+                            if (rhythmusText.Contains("woch"))
+                            {
+                                isRegularCourse = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (isRegularCourse)
+                    {
+                        var belegungsinformationenLink = await page.QuerySelectorAsync("div.webTerm_activities a.regular[href*='Belegungsinformation']");
+                        if (belegungsinformationenLink != null)
+                        {
+                            // Click on the link to navigate to the Belegungsinformationen page
+                            await belegungsinformationenLink.ClickAsync();
+                            await page.WaitForNavigationAsync(new PuppeteerSharp.NavigationOptions { WaitUntil = new[] { WaitUntilNavigation.Networkidle0 } });
+                            await Task.Delay(1000); // Additional wait after navigation
+
+                            // Extract course code and group number
+                            int groupNumber = 0;
+                            var groupElement = await page.QuerySelectorAsync("div.regular[align='center']");
+                            if (groupElement != null)
+                            {
+                                var groupText = await groupElement.EvaluateFunctionAsync<string>("el => el.textContent");
+                                var match = Regex.Match(groupText, @"(\d+)-Gruppe");
+                                if (match.Success)
+                                {
+                                    groupNumber = int.Parse(match.Groups[1].Value);
+                                }
+                            }
+
+                            string courseCode = "";
+                            var strongElement = await page.XPathAsync("//strong[contains(text(), 'Veranstaltung:')]/following-sibling::strong");
+                            if (strongElement.Length > 0)
+                            {
+                                courseCode = await strongElement[0].EvaluateFunctionAsync<string>("el => el.textContent");
+                            }
+
+                            // Format the course code with group number if available
+                            formattedCourseCode = courseCode.Trim();
+                            if (groupNumber != 0)
+                            {
+                                formattedCourseCode = formattedCourseCode + " Gr" + groupNumber;
+                            }
+
+                            // Find and click the button to show the student list
+                            var inputButton = await page.QuerySelectorAsync("input[type='submit'][value='Liste mit Namen zeigen']");
+                            if (inputButton != null)
+                            {
+                                await inputButton.ClickAsync();
+
+                                // Wait for the new tab to open
+                                var newTab = await browser.WaitForTargetAsync(t => t.Opener == page.Target);
+                                var newTabPage = await newTab.PageAsync();
+                                await newTabPage.BringToFrontAsync();
+
+                                // Wait for the table to load with increased timeout
+                                await newTabPage.WaitForSelectorAsync(".printtable", new WaitForSelectorOptions { Timeout = 10000 });
+                                await Task.Delay(1000); // Additional wait to ensure table content loads
+
+                                // Get student data
+                                var tableRowsWoch = await newTabPage.QuerySelectorAllAsync(".printtable tr");
+
+                                for (int i = 1; i < tableRowsWoch.Length; i++) // Skip header row
+                                {
+                                    var row = tableRowsWoch[i];
+                                    var cells = await row.QuerySelectorAllAsync("td");
+
+                                    // Extract student data
+                                    var lastName = await cells[2].EvaluateFunctionAsync<string>("el => el.innerText");
+                                    var firstName = await cells[3].EvaluateFunctionAsync<string>("el => el.innerText");
+                                    var email = await cells[5].EvaluateFunctionAsync<string>("el => el.innerText");
+
+                                    // Add to student collection
+                                    studentsinFakultät.Add(new BelegInformationen
+                                        {
+                                            Kennung = formattedCourseCode,
+                                            Nachname = lastName.Trim(),
+                                            Vorname = firstName.Trim(),
+                                            EmailAdresse = email.Trim()
+                                        });
+                                }
+
+                                AddStatusMessage($"Added {tableRowsWoch.Length - 1} students for course {formattedCourseCode}");
+
+                                // Close the new tab and return to the main page
+                                await newTabPage.CloseAsync();
+                                await page.BringToFrontAsync();
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    AddStatusMessage("No students found for this course");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AddStatusMessage($"Error processing student data: {ex.Message}");
+        }
+    }
+
+    private async Task ProcessGroupStudentData(IPage page, IBrowser browser, string link, int groupIndex)
+    {
+        try
+        {
+            // Initialize formattedCourseCode at the beginning of the method
+            string formattedCourseCode = "Unknown";
+
+            // Navigate to the course page
+            await page.GoToAsync(link, new PuppeteerSharp.NavigationOptions { WaitUntil = new[] { WaitUntilNavigation.Networkidle0 } });
+            await Task.Delay(2000); // Increased wait time to ensure page fully loads
+
+            // Get all Belegungsinformation links
+            var belegungsinformationLinks = await page.QuerySelectorAllAsync("div.webTerm_activities a.regular[href*='Belegungsinformation']");
+
+            if (belegungsinformationLinks.Length >= groupIndex)
+            {
+                var belegungsinformationLink = belegungsinformationLinks[groupIndex - 1];
+
+                // Click on the link for this group
+                await belegungsinformationLink.ClickAsync();
+                await page.WaitForNavigationAsync(new PuppeteerSharp.NavigationOptions { WaitUntil = new[] { WaitUntilNavigation.Networkidle0 } });
+                await Task.Delay(1000); // Additional wait after navigation
+
+                // Extract course code and group number
+                int groupNumber = 0;
+                var groupElement = await page.QuerySelectorAsync("div.regular[align='center']");
+                if (groupElement != null)
+                {
+                    var groupText = await groupElement.EvaluateFunctionAsync<string>("el => el.textContent");
+                    var match = Regex.Match(groupText, @"(\d+)-Gruppe");
+                    if (match.Success)
+                    {
+                        groupNumber = int.Parse(match.Groups[1].Value);
+                    }
+                }
+
+                string courseCode = "";
+                var strongElement = await page.XPathAsync("//strong[contains(text(), 'Veranstaltung:')]/following-sibling::strong");
+                if (strongElement.Length > 0)
+                {
+                    courseCode = await strongElement[0].EvaluateFunctionAsync<string>("el => el.textContent");
+                }
+
+                // Format the course code with group number if available
+                formattedCourseCode = courseCode.Trim();
+                if (groupNumber != 0)
+                {
+                    formattedCourseCode = formattedCourseCode + " Gr" + groupNumber;
+                }
+
+                // Find and click the button to show the student list
+                var inputButton = await page.QuerySelectorAsync("input[type='submit'][value='Liste mit Namen zeigen']");
+                if (inputButton != null)
+                {
+                    await inputButton.ClickAsync();
+
+                    // Wait for the new tab to open
+                    var newTab = await browser.WaitForTargetAsync(t => t.Opener == page.Target);
+                    var newTabPage = await newTab.PageAsync();
+                    await newTabPage.BringToFrontAsync();
+
+                    // Wait for the table to load with increased timeout
+                    await newTabPage.WaitForSelectorAsync(".printtable", new WaitForSelectorOptions { Timeout = 10000 });
+                    await Task.Delay(1000); // Additional wait to ensure table content loads
+
+                    // Get student data
+                    var tableRowsWoch = await newTabPage.QuerySelectorAllAsync(".printtable tr");
+
+                    for (int i = 1; i < tableRowsWoch.Length; i++) // Skip header row
+                    {
+                        var row = tableRowsWoch[i];
+                        var cells = await row.QuerySelectorAllAsync("td");
+
+                        // Extract student data
+                        var lastName = await cells[2].EvaluateFunctionAsync<string>("el => el.innerText");
+                        var firstName = await cells[3].EvaluateFunctionAsync<string>("el => el.innerText");
+                        var email = await cells[5].EvaluateFunctionAsync<string>("el => el.innerText");
+
+                        // Add to student collection
+                        studentsinFakultät.Add(new BelegInformationen
+                            {
+                                Kennung = formattedCourseCode,
+                                Nachname = lastName.Trim(),
+                                Vorname = firstName.Trim(),
+                                EmailAdresse = email.Trim()
+                            });
+                    }
+
+                    AddStatusMessage($"Added {tableRowsWoch.Length - 1} students for group {groupIndex} of course {formattedCourseCode}");
+
+                    // Close the new tab and return to the main page
+                    await newTabPage.CloseAsync();
+                    await page.BringToFrontAsync();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AddStatusMessage($"Error processing group student data: {ex.Message}");
+        }
+    }
+
+    private async Task<string> GetHtmlAsync(HttpClient httpClient, string url)
+    {
+        try
+        {
+            AddStatusMessage($"Fetching HTML from: {url}");
+            return await httpClient.GetStringAsync(url);
+        }
+        catch (Exception ex)
+        {
+            AddStatusMessage($"Error fetching HTML: {ex.Message}");
+            throw;
+        }
+    }
+
+    private List<string> GetFakultätlinks(string html, string url)
+    {
+        HtmlDocument htmlDoc = new HtmlDocument();
+        htmlDoc.LoadHtml(html);
+        var aNodes = htmlDoc.DocumentNode.SelectNodes("//a[@class='linkAsButton']");
+        List<string> hrefValues = new List<string>();
+        hrefValues.Add(url);
+
+        if (aNodes != null)
+        {
+            foreach (var aNode in aNodes)
+            {
+                string hrefValue = aNode.GetAttributeValue("href", string.Empty);
+                string decodedHrefValue = WebUtility.HtmlDecode(hrefValue);
+                hrefValues.Add(decodedHrefValue);
+                AddStatusMessage($"Found faculty link: {decodedHrefValue}");
+            }
+        }
+
+        return hrefValues;
+    }
+
+    private List<string> GetVeranstaltungsLinks(List<string> fakultätlinks)
+    {
+        HtmlDocument htmlDoc = new HtmlDocument();
+        List<string> veranstaltungslinks = new List<string>();
+
+        using (WebClient webClient = new WebClient())
+        {
+            int processedLinks = 0;
+
+            foreach (var fakultätslink in fakultätlinks)
+            {
+                try
+                {
+                    AddStatusMessage($"Processing faculty link: {fakultätslink}");
+                    string htmlString = webClient.DownloadString(fakultätslink);
+                    htmlDoc.LoadHtml(htmlString);
+
+                    var aNodes = htmlDoc.DocumentNode.SelectNodes("//td[@class='normal' and @align='left' and @valign='top']/a[@class='regular']");
+                    if (aNodes == null)
+                    {
+                        AddStatusMessage("No course links found in this faculty");
+                        continue;
+                    }
+
+                    List<string> acceptedValues = GetAcceptedCourseTypes();
+                    int linkCount = 0;
+
+                    foreach (var aNode in aNodes)
+                    {
+                        var previousTdNode = aNode.ParentNode.PreviousSibling;
+                        while (previousTdNode != null && previousTdNode.Name != "td")
+                        {
+                            previousTdNode = previousTdNode.PreviousSibling;
+                        }
+
+                        if (previousTdNode != null && acceptedValues.Any(value => previousTdNode.InnerText.Contains(value)))
+                        {
+                            string hrefValue = aNode.GetAttributeValue("href", string.Empty);
+                            string decodedHrefValue = WebUtility.HtmlDecode(hrefValue);
+                            veranstaltungslinks.Add(decodedHrefValue);
+                            linkCount++;
+                        }
+                    }
+
+                    AddStatusMessage($"Found {linkCount} course links in this faculty");
+
+                    processedLinks++;
+                    int subProgress = 30 + (processedLinks * 10 / fakultätlinks.Count);
+                    UpdateProgress(subProgress, $"Processed {processedLinks} of {fakultätlinks.Count} faculty links");
+                }
+                catch (Exception ex)
+                {
+                    AddStatusMessage($"Error processing faculty link {fakultätslink}: {ex.Message}");
+                }
+            }
+        }
+
+        return veranstaltungslinks;
+    }
+
+    private List<DataEntry> ExtractData(string html)
+    {
+        HtmlDocument htmlDoc = new HtmlDocument();
+        htmlDoc.LoadHtml(html);
+        List<DataEntry> entryList = new List<DataEntry>();
+
+        // 1. Find the first TD node within the table containing any of the specified keywords
+        var rhythmusNode = htmlDoc.DocumentNode.SelectSingleNode(
+            "//table[@summary='Übersicht über alle Veranstaltungstermine']" +
+            "//td[contains(., 'woch') or contains(., '14tägl')]");
+        if (rhythmusNode == null)
+        {
+            return entryList;
+        }
+       
+
+        var aNodes2 = htmlDoc.DocumentNode.SelectNodes("//table[@summary='Verantwortliche Dozenten']//td[contains(@class, 'mod_n_')]/a[@class='regular' and contains(@href, 'personal.pid')]");
+        List<string> hrefValues = new List<string>();
+
+        var groups = htmlDoc.DocumentNode.SelectNodes("//table[@summary='Übersicht über alle Veranstaltungstermine']/caption[@class='t_capt']");
+        int groupCount = groups != null ? groups.Count : 0;
+
+        if (aNodes2 != null)
+        {
+            // Collect ALL professors from "Verantwortliche Dozenten" for better fallback matching
+            foreach (var aNode2 in aNodes2)
+            {
+                string hrefValue = aNode2.GetAttributeValue("href", string.Empty);
+                string decodedHrefValue = WebUtility.HtmlDecode(hrefValue);
+                hrefValues.Add(decodedHrefValue);
+            }
+
+            for (int x = 0; x < groupCount; x++)
+            {
+                int i = x + 1;
+
+                DataEntry entry = new DataEntry();
+
+                // Extract course name from title
+                var titleNode = htmlDoc.DocumentNode.SelectSingleNode("//title");
+                if (titleNode != null)
+                {
+                    string titleText = titleNode.InnerText;
+                    string result = GetTextBetween(titleText, ":", "Pädagogische");
+                    string decodedResult = WebUtility.HtmlDecode(result);
+                    entry.CourseName = decodedResult.Trim();
+
+                    if (groupCount > 1)
+                    {
+                        entry.CourseName = entry.CourseName + " Gr" + i;
+                    }
+                }
+
+                if (rhythmusNode != null)
+                {
+                    // Get the actual text content of the found cell
+                    entry.Rhythmus = rhythmusNode.InnerText.Trim();
+                    // AddStatusMessage($"DEBUG: Found Rhythmus using keyword selector: '{entry.Rhythmus}'");
+                }
+
+                // Extract course code
+                var firstTdNode = htmlDoc.DocumentNode.SelectSingleNode("//td[@class='mod_n_basic' and @headers='basic_3']");
+                if (firstTdNode != null)
+                {
+                    string firstTdContent = firstTdNode.InnerText;
+                    entry.CourseCode = firstTdContent.Trim();
+
+                    if (groupCount > 1)
+                    {
+                        entry.CourseCode = entry.CourseCode + " Gr" + i;
+                    }
+                }
+
+                // Extract program of studies
+                var lastANodes = htmlDoc.DocumentNode.SelectNodes("//div[@style='padding-left: 10px;']//a[last()]");
+                List<string> lastAContents = new List<string>();
+
+                if (lastANodes != null)
+                {
+                    foreach (var lastANode in lastANodes)
+                    {
+                        string content = lastANode.InnerText.Trim();
+                        if (content.StartsWith("MA") || content.StartsWith("BA"))
+                        {
+                            lastAContents.Add(content);
+                        }
+                    }
+
+                    int len = lastAContents.Count;
+                    int count = 0;
+                    foreach (string content in lastAContents)
+                    {
+                        count++;
+                        if (count == len)
+                        {
+                            entry.ProgramOfStudies = entry.ProgramOfStudies + content;
+                        }
+                        else
+                        {
+                            entry.ProgramOfStudies = entry.ProgramOfStudies + content + " | ";
+                        }
+                    }
+                }
+                else
+                {
+                    entry.ProgramOfStudies = "Not found";
+                }
+
+                // Extract course type
+                var tdNode = htmlDoc.DocumentNode.SelectSingleNode("//td[@headers='basic_1']");
+                if (tdNode != null)
+                {
+                    string tdContent = tdNode.InnerText.Trim();
+
+                    // Use a switch expression for cleaner mapping, comparing case-insensitively
+                    entry.CourseType = tdContent switch
+                    {
+                        // Map known course type names found in HTML to their numeric codes
+                        _ when tdContent.Equals("Vorlesung", StringComparison.OrdinalIgnoreCase) => "1",
+                        _ when tdContent.Equals("Seminar", StringComparison.OrdinalIgnoreCase) => "2",
+                        _ when tdContent.Equals("Haupt/Proseminar", StringComparison.OrdinalIgnoreCase) => "3", // Specific mapping for combined term
+                        _ when tdContent.Equals("Übung", StringComparison.OrdinalIgnoreCase) => "4",
+                        _ when tdContent.Equals("Praktikum", StringComparison.OrdinalIgnoreCase) => "5",
+                        _ when tdContent.Equals("Hauptseminar", StringComparison.OrdinalIgnoreCase) => "8", // Specific mapping for Hauptseminar only
+                        _ when tdContent.Equals("Kolloquium", StringComparison.OrdinalIgnoreCase) => "9",
+                        _ when tdContent.Equals("Tutorium", StringComparison.OrdinalIgnoreCase) => "10",
+                        _ when tdContent.Equals("Ringvorlesung", StringComparison.OrdinalIgnoreCase) => "11",
+                        _ when tdContent.Equals("Exkursion", StringComparison.OrdinalIgnoreCase) => "12",
+                        _ when tdContent.Equals("Sonstige", StringComparison.OrdinalIgnoreCase) => "14",
+                        _ when tdContent.Equals("Präsenzphase", StringComparison.OrdinalIgnoreCase) => "15",
+                        _ when tdContent.Equals("Kompakt", StringComparison.OrdinalIgnoreCase) => "16",
+
+                        // Default case: If no known type matches, store the original text found.
+                        // This helps identify if LSF uses different terminology than expected.
+                        _ => tdContent
+                    };
+
+                    // Optional: Log if the default case was hit, indicating an unmapped type
+                    // Check if the result is the same as input AND it's not empty AND it doesn't already look like a number code
+                    bool isKnownCode = entry.CourseType switch { "1" or "2" or "3" or "4" or "5" or "8" or "9" or "10" or "11" or "12" or "14" or "15" or "16" => true, _ => false };
+                    if (!isKnownCode && !string.IsNullOrEmpty(entry.CourseType))
+                    {
+                        AddStatusMessage($"Warning: Unmapped Course Type found in HTML: '{entry.CourseType}'");
+                    }
+                }
+                else // If the TD node itself wasn't found
+                {
+                    entry.CourseType = "Type Not Found";
+                }
+
+                // Extract professor link
+                var tables = htmlDoc.DocumentNode.SelectNodes("//table[@summary='Übersicht über alle Veranstaltungstermine']");
+                string profhref = "";
+
+                if (tables != null && x >= 0 && x < tables.Count)
+                {
+                    // Find ANY professor link in this group's table - much simpler approach
+                    var lehrpersonLink = tables[x].SelectSingleNode(".//a[contains(@href, 'personal.pid')]");
+                    
+                    // If still not found, try different variations
+                    if (lehrpersonLink == null)
+                    {
+                        lehrpersonLink = tables[x].SelectSingleNode(".//a[@class='regular' and contains(@href, 'personal')]");
+                    }
+                    
+                    if (lehrpersonLink != null)
+                    {
+                        profhref = lehrpersonLink.GetAttributeValue("href", string.Empty);
+                        // Decode HTML entities (&amp; -> &) to fix URL format
+                        profhref = WebUtility.HtmlDecode(profhref);
+                    }
+                    // Try to match with corresponding professor index, fallback to first
+                    else if (hrefValues.Count > x)
+                    {
+                        profhref = hrefValues[x];
+                    }
+                    else if (hrefValues.Count > 0)
+                    {
+                        profhref = hrefValues[0];
+                    }
+                }
+                else if (hrefValues.Count > 0)
+                {
+                    profhref = hrefValues[0];
+                }
+                else
+                {
+                    profhref = "Not found";
+                }
+
+                entry.ProfLink = profhref;
+                entry.UserType = "Dozent"; // Default value
+                entryList.Add(entry);
+            }
+        }
+        else
+        {
+            // Handle case with no professor information
+            DataEntry entry = new DataEntry();
+
+            // Extract course name
+            var titleNode = htmlDoc.DocumentNode.SelectSingleNode("//title");
+            if (titleNode != null)
+            {
+                string titleText = titleNode.InnerText;
+                string result = GetTextBetween(titleText, "Seminar:", "Pädagogische");
+                entry.CourseName = result.Trim();
+            }
+
+            // Extract course code
+            var firstTdNode = htmlDoc.DocumentNode.SelectSingleNode("//td[@class='mod_n_basic' and @headers='basic_3']");
+            if (firstTdNode != null)
+            {
+                string firstTdContent = firstTdNode.InnerText;
+                entry.CourseCode = firstTdContent.Trim();
+            }
+
+            // Extract program of studies
+            var lastANodes = htmlDoc.DocumentNode.SelectNodes("//div[@style='padding-left: 10px;']//a[last()]");
+            List<string> lastAContents = new List<string>();
+
+            if (lastANodes != null)
+            {
+                foreach (var lastANode in lastANodes)
+                {
+                    string content = lastANode.InnerText.Trim();
+                    if (content.StartsWith("MA") || content.StartsWith("BA"))
+                    {
+                        lastAContents.Add(content);
+                    }
+                }
+
+                int len = lastAContents.Count;
+                int count = 0;
+                foreach (string content in lastAContents)
+                {
+                    count++;
+                    if (count == len)
+                    {
+                        entry.ProgramOfStudies = entry.ProgramOfStudies + content;
+                    }
+                    else
+                    {
+                        entry.ProgramOfStudies = entry.ProgramOfStudies + content + " | ";
+                    }
+                }
+            }
+            else
+            {
+                entry.ProgramOfStudies = "Not found";
+            }
+
+            // --- Updated Course Type Extraction ---
+            var tdNode = htmlDoc.DocumentNode.SelectSingleNode("//td[@headers='basic_1']");
+            if (tdNode != null)
+            {
+                string tdContent = tdNode.InnerText.Trim();
+
+                // Use a switch expression for cleaner mapping, comparing case-insensitively
+                entry.CourseType = tdContent switch
+                {
+                    // Map known course type names found in HTML to their numeric codes
+                    _ when tdContent.Equals("Vorlesung", StringComparison.OrdinalIgnoreCase) => "1",
+                    _ when tdContent.Equals("Seminar", StringComparison.OrdinalIgnoreCase) => "2",
+                    _ when tdContent.Equals("Haupt/Proseminar", StringComparison.OrdinalIgnoreCase) => "3", // Specific mapping for combined term
+                    _ when tdContent.Equals("Übung", StringComparison.OrdinalIgnoreCase) => "4",
+                    _ when tdContent.Equals("Praktikum", StringComparison.OrdinalIgnoreCase) => "5",
+                    _ when tdContent.Equals("Hauptseminar", StringComparison.OrdinalIgnoreCase) => "8", // Specific mapping for Hauptseminar only
+                    _ when tdContent.Equals("Kolloquium", StringComparison.OrdinalIgnoreCase) => "9",
+                    _ when tdContent.Equals("Tutorium", StringComparison.OrdinalIgnoreCase) => "10",
+                    _ when tdContent.Equals("Ringvorlesung", StringComparison.OrdinalIgnoreCase) => "11",
+                    _ when tdContent.Equals("Exkursion", StringComparison.OrdinalIgnoreCase) => "12",
+                    _ when tdContent.Equals("Sonstige", StringComparison.OrdinalIgnoreCase) => "14",
+                    _ when tdContent.Equals("Präsenzphase", StringComparison.OrdinalIgnoreCase) => "15",
+                    _ when tdContent.Equals("Kompakt", StringComparison.OrdinalIgnoreCase) => "16",
+
+                    // Default case: If no known type matches, store the original text found.
+                    // This helps identify if LSF uses different terminology than expected.
+                    _ => tdContent
+                };
+
+                // Optional: Log if the default case was hit, indicating an unmapped type
+                // Check if the result is the same as input AND it's not empty AND it doesn't already look like a number code
+                bool isKnownCode = entry.CourseType switch { "1" or "2" or "3" or "4" or "5" or "8" or "9" or "10" or "11" or "12" or "14" or "15" or "16" => true, _ => false };
+                if (!isKnownCode && !string.IsNullOrEmpty(entry.CourseType))
+                {
+                    AddStatusMessage($"Warning: Unmapped Course Type found in HTML: '{entry.CourseType}'");
+                }
+            }
+            else // If the TD node itself wasn't found
+            {
+                entry.CourseType = "Type Not Found";
+            }
+            // --- End Updated Course Type Extraction ---
+
+            entry.ProfLink = "Not found";
+            entry.UserType = "Dozent"; // Default value
+            entryList.Add(entry);
+        }
+
+        return entryList;
+    }
+    private DataEntry ExtractUserData(string html, DataEntry entry)
+    {
+        HtmlDocument htmlDoc = new HtmlDocument();
+        htmlDoc.LoadHtml(html);
+        
+        // Check if the page returned an error message
+        if (html.Contains("Die angeforderte Auswertung ist zur Zeit nicht verfügbar") || 
+            html.Contains("nicht verfügbar") || 
+            html.Contains("not available"))
+        {
+            return entry; // Return the entry as-is if profile page is not accessible
+        }
+
+        // Extract surname - try multiple selectors
+        var tdNode = htmlDoc.DocumentNode.SelectSingleNode("//td[@headers='basic_1']");
+        if (tdNode == null)
+        {
+            // Try alternative selectors for different page structures
+            tdNode = htmlDoc.DocumentNode.SelectSingleNode("//td[contains(@class, 'mod_n_basic') and position()=2]");
+        }
+        if (tdNode == null)
+        {
+            // Try finding by content pattern
+            var allTds = htmlDoc.DocumentNode.SelectNodes("//td");
+            if (allTds != null)
+            {
+                foreach (var td in allTds)
+                {
+                    if (!string.IsNullOrEmpty(td.InnerText) && td.InnerText.Trim().Length > 2 && 
+                        !td.InnerText.Contains("@") && !td.InnerText.Contains("http"))
+                    {
+                        tdNode = td;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (tdNode != null)
+        {
+            string tdContent = tdNode.InnerText;
+            entry.Surname = tdContent.Trim();
+        }
+        else
+        {
+            // Try to extract name from page title or h1 tag
+            var titleNode = htmlDoc.DocumentNode.SelectSingleNode("//title | //h1");
+            if (titleNode != null && titleNode.InnerText.Contains(" "))
+            {
+                var parts = titleNode.InnerText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 1)
+                {
+                    entry.Surname = parts[parts.Length - 1].Trim();
+                }
+            }
+        }
+
+        // Extract first name
+        var tdNodeFirst = htmlDoc.DocumentNode.SelectSingleNode("//td[@headers='basic_3']");
+        if (tdNodeFirst != null)
+        {
+            string tdContentFirst = tdNodeFirst.InnerText;
+            entry.FirstName = tdContentFirst.Trim();
+        }
+
+        // Extract Personalstatus
+        string personalStatus = "";
+        var tdNodeStatus = htmlDoc.DocumentNode.SelectSingleNode("//td[@headers='basic_6']");
+        if (tdNodeStatus != null)
+        {
+            personalStatus = tdNodeStatus.InnerText.Trim();
+        }
+
+        // Extract professional title (academic degree)
+        var tdNodeAK = htmlDoc.DocumentNode.SelectSingleNode("//td[@headers='basic_9']");
+        if (tdNodeAK != null)
+        {
+            string tdContentAK = tdNodeAK.InnerText;
+            string decodedProfTitle = WebUtility.HtmlDecode(tdContentAK.Trim());
+
+            // Combine Personalstatus with academic degree
+            if (!string.IsNullOrEmpty(personalStatus))
+            {
+                entry.ProfessionalTitle = personalStatus + " " + decodedProfTitle;
+            }
+            else
+            {
+                entry.ProfessionalTitle = decodedProfTitle;
+            }
+        }
+        else if (!string.IsNullOrEmpty(personalStatus))
+        {
+            // If no academic degree but we have Personalstatus
+            entry.ProfessionalTitle = personalStatus;
+        }
+
+        // Extract gender/title
+        var tdNodeGen = htmlDoc.DocumentNode.SelectSingleNode("//td[@headers='basic_2']");
+        if (tdNodeGen != null)
+        {
+            string tdContentGen = tdNodeGen.InnerText.Trim();
+            if (tdContentGen == "weiblich")
+            {
+                entry.Title = "Frau";
+            }
+            else
+            {
+                entry.Title = "Herr";
+            }
+        }
+
+        // Extract email
+        var aNode = htmlDoc.DocumentNode.SelectSingleNode("//td[@headers='pAdress_6']//a");
+        if (aNode != null)
+        {
+            string aContent = aNode.InnerText;
+            entry.Email = aContent.Trim();
+        }
+        else
+        {
+            entry.Email = "Email not found";
+        }
+
+        return entry;
+    }
+
+    private List<string> GetAcceptedCourseTypes()
+    {
+        List<string> acceptedValues = new List<string>();
+
+        // Check each flag in FormModel and add the corresponding LSF text if true
+        if (formModel.IncludeVorlesung)
+            acceptedValues.Add("Vorlesung");           // 1
+        if (formModel.IncludeSeminar)
+            acceptedValues.Add("Seminar");            // 2
+        if (formModel.IncludeHauptProseminar)
+            acceptedValues.Add("Haupt/Proseminar");   // 3
+        if (formModel.IncludeUebung)
+            acceptedValues.Add("Übung");              // 4
+        if (formModel.IncludePraktikum)
+            acceptedValues.Add("Praktikum");          // 5
+        if (formModel.IncludeHauptseminar)
+            acceptedValues.Add("Hauptseminar");       // 8
+        if (formModel.IncludeKolloquium)
+            acceptedValues.Add("Kolloquium");         // 9
+        if (formModel.IncludeTutorium)
+            acceptedValues.Add("Tutorium");           // 10
+        if (formModel.IncludeRingvorlesung)
+            acceptedValues.Add("Ringvorlesung");      // 11
+        if (formModel.IncludeExkursion)
+            acceptedValues.Add("Exkursion");          // 12
+        if (formModel.IncludeSonstige)
+            acceptedValues.Add("Sonstige");           // 14
+        if (formModel.IncludePraesenzphase)
+            acceptedValues.Add("Präsenzphase");       // 15
+        if (formModel.IncludeKompakt)
+            acceptedValues.Add("Kompakt");            // 16
+
+        // Add variations if needed, e.g., if "Haupt/Proseminar" might just appear as "Proseminar"
+        // if (formModel.IncludeHauptProseminar)
+        //    acceptedValues.Add("Proseminar"); // Example variation
+
+        return acceptedValues;
+    }
+
+    private void UpdateProgress(int percentage, string message)
+    {
+        progressPercentage = percentage;
+        progressMessage = message;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void AddStatusMessage(string message)
+    {
+        statusMessages.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetTextBetween(string text, string start, string end)
+    {
+        int startIndex = text.IndexOf(start) + start.Length;
+        int endIndex = text.IndexOf(end);
+
+        if (startIndex < 0 || endIndex < 0)
+            return "";
+
+        return text.Substring(startIndex, endIndex - startIndex);
+    }
+
+    // Replace the existing GetCourseTypeText method within the @code { ... } block
+
+    private string GetCourseTypeText(string courseTypeCode)
+    {
+        // Maps the numeric code stored in DataEntry back to a user-friendly display name
+        return courseTypeCode switch
+        {
+            "1" => "Vorlesung",
+            "2" => "Seminar",
+            "3" => "Haupt/Proseminar", // Updated mapping for 3
+            "4" => "Übung",            // Updated mapping for 4
+            "5" => "Praktikum",
+            "8" => "Hauptseminar",     // Kept mapping for 8
+            "9" => "Kolloquium",
+            "10" => "Tutorium",
+            "11" => "Ringvorlesung",
+            "12" => "Exkursion",
+            "14" => "Sonstige",
+            "15" => "Präsenzphase",
+            "16" => "Kompakt",
+
+            // Default: If the code is unknown or wasn't mapped correctly earlier,
+            // display the code/text that was stored.
+            _ => courseTypeCode
+        };
+    }
+
+    private int GetStudentCountForCourse(string courseCode)
+    {
+        return studentsinFakultät.Count(s => s.Kennung == courseCode);
+    }
+
+    private void ToggleAllSelection()
+    {
+        areAllSelected = !areAllSelected;
+        foreach (var item in collectedData)
+        {
+            item.IsSelected = areAllSelected;
+        }
+    }
+
+    private async Task ExportSelectedData()
+    {
+        try
+        {
+            // Generate professor data export
+            string professorDataExport = "usertype;title;professional_title;firstname;surname;email;course_name;course_code;program_of_studies;course_type\n";
+
+            // Get list of selected courses
+            var selectedCourses = collectedData.Where(i => i.IsSelected).ToList();
+
+            // Apply minimum student count filter if specified
+            int excludedCount = 0;
+            if (minStudentCount.HasValue && minStudentCount.Value > 0)
+            {
+                var filteredCourses = new List<SelectableDataEntry>();
+                foreach (var course in selectedCourses)
+                {
+                    int studentCount = GetStudentCountForCourse(course.CourseCode);
+                    if (studentCount >= minStudentCount.Value)
+                    {
+                        filteredCourses.Add(course);
+                    }
+                    else
+                    {
+                        excludedCount++;
+                    }
+                }
+                selectedCourses = filteredCourses;
+            }
+
+            foreach (var item in selectedCourses)
+            {
+                // Use the original format from the console application with semester code appended to course code
+                professorDataExport += $"{item.UserType};{item.Title};{item.ProfessionalTitle};{item.FirstName};{item.Surname};{item.Email};{item.CourseName};{item.CourseCode}_{formModel.SemesterCode};{item.ProgramOfStudies};{item.CourseType}\n";
+            }
+
+            // Get list of selected course codes
+            var selectedCourseCodes = selectedCourses.Select(c => c.CourseCode).ToList();
+
+            // Generate student data export with the semester code from UI
+            string studentDataExport = "";
+
+            // Filter students to only include those from selected courses
+            var selectedStudents = studentsinFakultät.Where(s => selectedCourseCodes.Contains(s.Kennung)).ToList();
+
+            foreach (var student in selectedStudents)
+            {
+                // Use the original format with semester code from UI
+                studentDataExport += $"{student.Kennung}_{formModel.SemesterCode};{student.EmailAdresse};{student.Nachname};{student.Titel};{student.Vorname};{student.Anrede};{student.Adresse};{student.Frei1};{student.Frei2};{student.Frei3}\n";
+            }
+
+            // Determine file names based on user input
+            string professorFileName = string.IsNullOrWhiteSpace(exportFileName)
+                ? "professor_data.csv"
+                : $"{exportFileName}_Kursdaten.csv";
+
+            string studentFileName = string.IsNullOrWhiteSpace(exportFileName)
+                ? "student_data.txt"
+                : $"{exportFileName}_Studentendaten.txt";
+
+            // Save professor data to file
+            await JSRuntime.InvokeVoidAsync(
+                "saveAsFile",
+                professorFileName,
+                professorDataExport
+            );
+
+            AddStatusMessage($"Professor data saved to file ({professorFileName})");
+
+            // Save student data to file with .txt extension as requested
+            if (!string.IsNullOrEmpty(studentDataExport))
+            {
+                await JSRuntime.InvokeVoidAsync(
+                    "saveAsFile",
+                    studentFileName,
+                    studentDataExport
+                );
+
+                AddStatusMessage($"Student data saved to file ({studentFileName})");
+            }
+
+            string filterMessage = excludedCount > 0
+                ? $" ({excludedCount} courses excluded due to student count filter)"
+                : "";
+
+            AddStatusMessage($"Exported {selectedCourses.Count} courses with {selectedStudents.Count} students{filterMessage}");
+        }
+        catch (Exception ex)
+        {
+            AddStatusMessage($"Error exporting data: {ex.Message}");
+        }
+    }
+
+
+    // Data classes
+    public class DataEntry
+    {
+        public string UserType { get; set; } = "Dozent";
+        public string Title { get; set; } = "";
+        public string ProfessionalTitle { get; set; } = "";
+        public string FirstName { get; set; } = "";
+        public string Surname { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string CourseName { get; set; } = "";
+        public string CourseCode { get; set; } = "";
+        public string ProgramOfStudies { get; set; } = "";
+        public string CourseType { get; set; } = "";
+        public string ProfLink { get; set; } = "";
+        public string Belegungslink { get; set; } = "";
+        public string Rhythmus { get; set; } = ""; 
+    }
+
+    public class SelectableDataEntry : DataEntry
+    {
+        public bool IsSelected { get; set; } = true;
+
+        public SelectableDataEntry(DataEntry entry)
+        {
+            UserType = entry.UserType;
+            Title = entry.Title;
+            ProfessionalTitle = entry.ProfessionalTitle;
+            FirstName = entry.FirstName;
+            Surname = entry.Surname;
+            Email = entry.Email;
+            CourseName = entry.CourseName;
+            CourseCode = entry.CourseCode;
+            ProgramOfStudies = entry.ProgramOfStudies;
+            CourseType = entry.CourseType;
+            ProfLink = entry.ProfLink;
+            Belegungslink = entry.Belegungslink;
+            Rhythmus = entry.Rhythmus;
+        }
+    }
+
+    public class BelegInformationen
+    {
+        public string Kennung { get; set; } = "";
+        public string EmailAdresse { get; set; } = "";
+        public string Nachname { get; set; } = "";
+        public string Titel { get; set; } = "";
+        public string Vorname { get; set; } = "";
+        public string Anrede { get; set; } = "";
+        public string Adresse { get; set; } = "";
+        public string Frei1 { get; set; } = "";
+        public string Frei2 { get; set; } = "";
+        public string Frei3 { get; set; } = "";
+    }
+
+    // Replace the existing FormModel class within the @code { ... } block
+
+    private class FormModel
+    {
+        [Required(ErrorMessage = "LSF URL is required")]
+        [Url(ErrorMessage = "Please enter a valid URL")]
+        public string LsfUrl { get; set; } = ""; // Keep existing initialization or OnInitialized logic
+
+        [Required(ErrorMessage = "Username is required")]
+        public string Username { get; set; } = ""; // Keep existing
+
+        [Required(ErrorMessage = "Password is required")]
+        public string Password { get; set; } = ""; // Keep existing
+
+        [Required(ErrorMessage = "Semester code is required")]
+        public string SemesterCode { get; set; } = ""; // Keep existing
+
+        // --- Course Type Flags ---
+        // Defaults set here: Vorlesung and Seminar are true, others false.
+        public bool IncludeVorlesung { get; set; } = true;    // 1 - Default True
+        public bool IncludeSeminar { get; set; } = true;     // 2 - Default True
+        public bool IncludeHauptProseminar { get; set; } = false; // 3
+        public bool IncludeUebung { get; set; } = false;         // 4
+        public bool IncludePraktikum { get; set; } = false;      // 5
+        public bool IncludeHauptseminar { get; set; } = false;   // 8 - Note: Separate from Haupt/Proseminar
+        public bool IncludeKolloquium { get; set; } = false;     // 9
+        public bool IncludeTutorium { get; set; } = false;       // 10
+        public bool IncludeRingvorlesung { get; set; } = false;  // 11
+        public bool IncludeExkursion { get; set; } = false;      // 12
+        public bool IncludeSonstige { get; set; } = false;       // 14
+        public bool IncludePraesenzphase { get; set; } = false;   // 15
+        public bool IncludeKompakt { get; set; } = false;        // 16
+    }
+}
+
+<style>
+    /* Main container styling */
+    .lsf-container {
+    max-width: 1000px;
+    margin: 3rem auto;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    /* Card styling */
+    .lsf-card {
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        border: none;
+        overflow: hidden;
+        background-color: #fff;
+    }
+
+    .lsf-card-header {
+        background: linear-gradient(135deg, #1e3a8a, #1e40af);
+    padding: 1.5rem;
+        border-bottom: none;
+        text-align: center;
+    }
+
+    .lsf-card-header h3 {
+        margin: 0;
+            font-weight: 600;
+            font-size: 1.75rem;
+            color: white;
+            letter-spacing: 0.5px;
+    }
+
+    .lsf-card-body {
+        padding: 2.5rem;
+        background-color: #ffffff;
+    }
+
+    /* Form controls */
+    .lsf-form-control {
+        border-radius: 6px;
+        border: 1.5px solid #e2e8f0;
+    padding: 0.75rem 1rem;
+        transition: all 0.2s ease-in-out;
+        font-size: 1rem;
+        background-color: #f8fafc;
+    color: #334155;
+    width: 100%;
+        box-sizing: border-box;
+    }
+
+    .lsf-form-control:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+            outline: none;
+            background-color: #fff;
+    }
+
+    .lsf-form-control::placeholder {
+            color: #94a3b8;
+    }
+
+    .lsf-form-label {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #334155;
+    display: block;
+        font-size: 0.95rem;
+    }
+
+    .lsf-form-text {
+        color: #64748b;
+    font-size: 0.85rem;
+        margin-top: 0.5rem;
+        font-style: italic;
+    }
+
+    /* Form groups */
+    .lsf-form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    /* Checkbox styling */
+    .lsf-check-container {
+        display: flex;
+        flex-wrap: wrap;
+        margin-top: 0.75rem;
+        gap: 1rem;
+    }
+
+    .lsf-check-inline {
+        display: flex;
+        align-items: center;
+        min-width: 120px;
+        position: relative;
+        padding: 0.5rem 1rem;
+        background-color: #f8fafc;
+    border-radius: 6px;
+        border: 1.5px solid #e2e8f0;
+    transition: all 0.2s ease;
+    }
+
+    .lsf-check-inline:hover {
+        background-color: #f1f5f9;
+    }
+
+    .lsf-check-inline.active {
+            background-color: #dbeafe;
+        border-color: #3b82f6;
+    }
+
+    .lsf-check-input {
+        width: 1.2rem;
+        height: 1.2rem;
+        margin-right: 0.6rem;
+        accent-color: #1e40af;
+    cursor: pointer;
+    }
+
+    .lsf-check-label {
+        color: #334155;
+    font-weight: 500;
+        cursor: pointer;
+    }
+
+    /* Button styling */
+    .lsf-btn {
+        padding: 0.75rem 2rem;
+        font-weight: 600;
+        border-radius: 6px;
+        transition: all 0.2s ease-in-out;
+        cursor: pointer;
+        font-size: 1rem;
+        letter-spacing: 0.5px;
+        display: inline-block;
+        text-align: center;
+    }
+
+    .lsf-btn-primary {
+        background: linear-gradient(to right, #1e40af, #3b82f6);
+    border: none;
+        color: white;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+    }
+
+    .lsf-btn-primary:hover {
+        background: linear-gradient(to right, #1e3a8a, #2563eb);
+        transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+    }
+
+    .lsf-btn-primary:active {
+        transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+    }
+
+    .lsf-btn-secondary {
+        background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+    margin-right: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .lsf-btn-secondary:hover {
+        background: #e2e8f0;
+        transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .lsf-btn-secondary:active {
+        transform: translateY(0);
+    }
+
+    /* Validation styling */
+    .validation-message {
+        color: #ef4444;
+    font-size: 0.85rem;
+        margin-top: 0.5rem;
+        display: block;
+    }
+
+    .validation-summary {
+        color: #b91c1c;
+    background-color: #fee2e2;
+    border-radius: 6px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.5rem;
+        border-left: 4px solid #ef4444;
+    font-size: 0.95rem;
+    }
+
+    /* Field groups */
+    .lsf-field-row {
+        display: flex;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .lsf-field-column {
+        flex: 1;
+    }
+
+    /* Progress reporting styles */
+    .lsf-progress-container {
+        margin-top: 2rem;
+        padding: 1rem;
+        background-color: #f8fafc;
+    border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .lsf-progress {
+        height: 8px;
+        background-color: #e2e8f0;
+    border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 0.5rem;
+    }
+
+    .lsf-progress-bar {
+        height: 100%;
+        background: linear-gradient(to right, #3b82f6, #2563eb);
+    border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+
+    .lsf-progress-text {
+        color: #334155;
+    font-size: 0.9rem;
+        text-align: center;
+        font-weight: 500;
+    }
+
+    /* Status message styles */
+    .lsf-status-messages {
+        margin-top: 2rem;
+        background-color: #f8fafc;
+    border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    padding: 1rem;
+    }
+
+    .lsf-status-messages h4 {
+        margin-top: 0;
+            margin-bottom: 0.5rem;
+            color: #334155;
+        font-size: 1rem;
+    }
+
+    .lsf-status-log {
+        max-height: 200px;
+        overflow-y: auto;
+        background-color: #f1f5f9;
+    border-radius: 4px;
+        padding: 0.5rem;
+    }
+
+    .lsf-status-item {
+        padding: 0.25rem 0;
+        font-size: 0.85rem;
+        font-family: monospace;
+        white-space: pre-wrap;
+        color: #334155;
+    border-bottom: 1px solid #e2e8f0;
+    }
+
+    .lsf-status-item:last-child {
+            border-bottom: none;
+        }
+
+    /* Data Grid styles */
+    .lsf-collected-data {
+        margin-top: 2rem;
+        background-color: #fff;
+    border-radius: 8px;
+        border: 1px solid #e2e8f0;
+    padding: 1rem;
+    }
+
+    .lsf-collected-data h4 {
+        margin-top: 0;
+            margin-bottom: 1rem;
+            color: #334155;
+        font-size: 1.2rem;
+            font-weight: 600;
+    }
+
+    .lsf-data-actions {
+        margin-bottom: 1rem;
+        display: flex;
+        flex-wrap: wrap;
+    }
+
+    .lsf-data-grid {
+        overflow-x: auto;
+    }
+
+    .lsf-data-grid table {
+        width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+    }
+
+    .lsf-data-grid th {
+        background-color: #f8fafc;
+        padding: 0.75rem;
+            text-align: left;
+            color: #334155;
+        font-weight: 600;
+            border-bottom: 2px solid #e2e8f0;
+    }
+
+    .lsf-data-grid td {
+        padding: 0.75rem;
+            border-bottom: 1px solid #e2e8f0;
+        color: #334155;
+    }
+
+    .lsf-data-grid tr:hover {
+            background-color: #f8fafc;
+    }
+
+    /* Responsive adjustments */
+
+    @@media (max-width: 768px) {
+        .lsf-container {
+            margin: 1rem;
+            max-width: none;
+        }
+
+        .lsf-card-body {
+            padding: 1.5rem;
+        }
+
+        .lsf-field-row {
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .lsf-check-inline {
+            flex-basis: 100%;
+        }
+    }
+
+    .lsf-min-students {
+        min-width: 120px;
+        max-width: 200px;
+    }
+
+        .lsf-min-students .lsf-form-control {
+            height: 38px; /* Match button height */
+        }
+
+        .lsf-min-students .lsf-form-text {
+            font-size: 0.7rem;
+            margin-top: 0.25rem;
+        }
+
+    /* Ensure the data grid scrolls correctly */
+    .lsf-data-grid {
+        overflow-x: auto;
+        max-width: 100%;
+    }
+
+    /* Responsive adjustments */
+    @@media (max-width: 768px) {
+        .lsf-export-options {
+            flex-direction: column;
+        }
+
+        .lsf-min-students {
+            width: 100%;
+            max-width: none;
+        }
+    }
+    /* Updated styles for export options */
+    .lsf-export-options {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .lsf-export-field {
+        min-width: 150px;
+        max-width: 250px;
+    }
+
+        .lsf-export-field .lsf-form-control {
+            height: 38px; /* Match button height */
+        }
+
+        .lsf-export-field .lsf-form-text {
+            font-size: 0.7rem;
+            margin-top: 0.25rem;
+        }
+
+    .lsf-export-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 1.5rem; /* Align with input fields */
+    }
+
+    /* Ensure the data grid scrolls correctly */
+    .lsf-data-grid {
+        overflow-x: auto;
+        max-width: 100%;
+    }
+
+    /* Responsive adjustments */
+    @@media (max-width: 768px) {
+        .lsf-export-options {
+            flex-direction: column;
+        }
+
+        .lsf-export-field {
+            width: 100%;
+            max-width: none;
+        }
+
+        .lsf-export-actions {
+            margin-top: 0.5rem;
+        }
+    }
+</style>
+
+<script>
+    window.saveAsFile = (filename, content) => {
+        // Add UTF-8 BOM for proper Excel recognition of German umlaute
+        const BOM = '\uFEFF';
+        const contentWithBOM = BOM + content;
+        
+        // Create blob with UTF-8 encoding
+        const blob = new Blob([contentWithBOM], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        
+        var link = document.createElement('a');
+        link.download = filename;
+        link.href = url;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up the URL object
+        URL.revokeObjectURL(url);
+    }
+</script>
