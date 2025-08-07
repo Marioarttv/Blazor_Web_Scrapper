@@ -497,7 +497,7 @@
                         if (rhythmusColumnData != null)
                         {
                             var rhythmusText = await page.EvaluateFunctionAsync<string>("element => element.textContent", rhythmusColumnData);
-                            if (rhythmusText.Contains("woch"))
+                            if (rhythmusText.Contains("woch") || rhythmusText.Contains("Block") || rhythmusText.Contains("Einzel"))
                             {
                                 isRegularCourse = true;
                                 break;
