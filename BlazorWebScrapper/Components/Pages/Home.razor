@@ -805,10 +805,17 @@
         htmlDoc.LoadHtml(html);
         List<DataEntry> entryList = new List<DataEntry>();
 
-        // 1. Find the first TD node within the table containing any of the specified keywords
+        // 1. Find the Rhythmus column (4th column) in the schedule table
         var rhythmusNode = htmlDoc.DocumentNode.SelectSingleNode(
             "//table[@summary='Übersicht über alle Veranstaltungstermine']" +
-            "//td[contains(., 'woch') or contains(., '14tägl')]");
+            "//tbody/tr[1]/td[4]");
+        if (rhythmusNode == null)
+        {
+            // Fallback: try to find any cell with rhythm keywords
+            rhythmusNode = htmlDoc.DocumentNode.SelectSingleNode(
+                "//table[@summary='Übersicht über alle Veranstaltungstermine']" +
+                "//td[contains(., 'woch') or contains(., '14tägl') or contains(., 'Block') or contains(., 'Einzel')]");
+        }
         if (rhythmusNode == null)
         {
             return entryList;
